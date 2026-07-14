@@ -1,0 +1,70 @@
+import express from "express";
+import mongoose from "mongoose";
+import cors from "cors";
+import dotenv from "dotenv";
+
+// Import routes
+import authRoutes from "./routes/authRoutes.js";
+import productsRoutes from "./routes/productsRoutes.js";
+import categoriesRoutes from "./routes/categoresRoutes.js";
+import collectionRoutes from "./routes/collectionRoutes.js";
+import userRoutes from "./routes/userRoutes.js";
+import orderRoutes from "./routes/orderRoutes.js";
+import cartRoutes from "./routes/cartRoutes.js";
+import contactMessageRoutes from "./routes/contactMessageRoutes.js";
+
+// Load environment variables from .env file
+dotenv.config();
+
+// Create an Express application
+const app = express();
+
+// Middleware to parse JSON request bodies
+app.use(express.json());
+
+// Enable CORS for specified origins and methods
+app.use(
+  cors({
+    origin: ["http://localhost:5173", "http://localhost:3000"],
+    credentials: true,
+    methods: ["GET", "POST", "PUT", "DELETE"],
+    allowedHeaders: ["Content-Type", "Authorization"],
+  }),
+);
+
+// Use the imported routes for handling requests to specific endpoints
+app.use("/api/auth", authRoutes);
+app.use("/api/products", productsRoutes);
+app.use("/api/categories", categoriesRoutes);
+app.use("/api/collections", collectionRoutes);
+app.use("/api/user", userRoutes);
+app.use("/api/orders", orderRoutes);
+app.use("/api/cart", cartRoutes);
+app.use("/api/contact", contactMessageRoutes);
+app.use(
+  "/api/newsletter",
+  (await import("./routes/newsletterRoutes.js")).default,
+);
+
+// Get the MongoDB URI and server port from environment variables
+const MONGODB_URI = process.env.MONGODB_URI;
+const PORT = process.env.PORT || 3000;
+
+// Check if the MongoDB URI is defined in the environment variables
+if (!MONGODB_URI) {
+  throw new Error("MONGODB_URI is not defined in env");
+}
+
+// Connect to MongoDB and start the server
+mongoose
+  .connect(MONGODB_URI)
+  .then(() => {
+    console.log("Connected to MongoDB");
+
+    app.listen(PORT, () => {
+      console.log(`Server running on port ${PORT}`);
+    });
+  })
+  .catch((error) => {
+    console.error("MongoDB connection error:", error);
+  });
