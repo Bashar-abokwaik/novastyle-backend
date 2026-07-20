@@ -1,7 +1,7 @@
 import ContactMessage from "../models/contactMessage.js";
 import { Request, Response } from "express";
 import { validationResult } from "express-validator";
-import brevo from "../utils/brevo.js";
+import { sendEmail } from "../utils/sendEmail.js";
 
 // Controller function to handle contact message submission
 export const submitContactMessage = async (req: Request, res: Response) => {
@@ -21,19 +21,11 @@ export const submitContactMessage = async (req: Request, res: Response) => {
 
     // Send the message to the admin email
     try {
-      await brevo.transactionalEmails.sendTransacEmail({
-        to: [
-          {
-            email: process.env.ADMIN_EMAIL || "",
-          },
-        ],
-        sender: {
-          email: process.env.ADMIN_EMAIL!,
-          name: "NovaStyle Contact Form",
-        },
+      await sendEmail({
+        to: process.env.ADMIN_EMAIL || "",
         replyTo: email,
         subject: `New Contact Message: ${subject}`,
-        htmlContent: `
+        html: `
             <h2>New Contact Message</h2>
             <p><strong>Name:</strong> ${name}</p>
             <p><strong>Email:</strong> ${email}</p>
@@ -41,15 +33,14 @@ export const submitContactMessage = async (req: Request, res: Response) => {
             <p><strong>Message:</strong><br>${message}</p>
         `,
       });
-
-      // Respond with a success message if the email is sent successfully
-      res.status(201).json({ message: "Message submitted successfully" });
     } catch (emailError) {
       // Respond with a server error message if the email fails to send
       res
         .status(500)
         .json({ message: "Message saved but failed to send email" });
     }
+    // Respond with a success message if the contact message is saved and email is sent successfully
+    res.status(201).json({ message: "Message sent successfully" });
   } catch (error) {
     // Respond with a server error message if an exception occurs
     res.status(500).json({ message: "Server error", error });

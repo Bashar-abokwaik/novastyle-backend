@@ -2,7 +2,7 @@ import Order from "../models/orders.js";
 import Cart from "../models/cart.js";
 import { Request, Response } from "express";
 import { validationResult } from "express-validator";
-
+import Product from "../models/products.js";
 
 // Controller function to create a new order
 export const createOrder = async (
@@ -22,7 +22,7 @@ export const createOrder = async (
     const userCart = await Cart.findOne({
       userId: req.user?.userId as any,
     }).populate("items.productId");
-    
+
     // Check if the cart exists and has items
     if (!userCart || userCart.items.length === 0) {
       res.status(400).json({ message: "Cart is empty" });
@@ -30,15 +30,42 @@ export const createOrder = async (
     }
 
     // Map the cart items to the order items format
-    const orderItems = userCart.items.map((item) => ({
-      productId: item.productId,
-      quantity: item.quantity,
-      price: (item.productId as any).price || 0,
-    }));
+    const orderItems = userCart.items.map((item) => {
+      const product = item.productId as any;
+
+      const finalPrice =
+        product.discount > 0
+          ? product.price * (1 - product.discount / 100)
+          : product.price;
+
+      return {
+        productId: product._id,
+        quantity: item.quantity,
+        price: finalPrice,
+      };
+    });
     const totalAmount = orderItems.reduce(
       (total, item) => total + item.quantity * item.price,
       0,
     );
+    // Check if the products in the cart have enough stock before creating the order
+    for (const item of userCart.items) {
+      const product = item.productId as any;
+
+      if (product.stock < item.quantity) {
+        res.status(400).json({
+          message: `${product.title} is out of stock or doesn't have enough quantity`,
+        });
+        return;
+      }
+    }
+
+    // Deduct the ordered quantity from the product stock
+    for (const item of userCart.items) {
+      const product = item.productId as any;
+      product.stock -= item.quantity;
+      await product.save();
+    }
     // Create a new order instance and save it to the database
     const order = new Order({
       userId: req.user?.userId,
@@ -97,6 +124,17 @@ export const cancelOrder = async (
       res.status(400).json({ message: "Only pending orders can be cancelled" });
       return;
     }
+
+    // Restore the stock of the products in the order when cancelling
+    for (const item of order.items as any[]) {
+      const product = await Product.findById(item.productId);
+
+      if (!product) continue;
+
+      product.stock += item.quantity;
+
+      await product.save();
+    }
     // Update the order status to "cancelled"
     (order as any).status = "cancelled";
     await order.save();
@@ -111,19 +149,32 @@ export const adminGetAllOrders = async (
   res: Response,
 ): Promise<void> => {
   try {
-    // Fetch all orders from the database and populate the product and user details
+    // Implement pagination for retrieving all orders
+    const page = Number(req.query.page) || 1;
+    const limit = Number(req.query.limit) || 10;
+    const skip = (page - 1) * limit;
+
+    // Find all orders, populate the product and user details, and apply pagination
     const orders = await Order.find()
       .populate("items.productId")
-      .populate("userId", "email");
+      .populate("userId", "email")
+      .sort({ createdAt: -1 })
+      .skip(skip)
+      .limit(limit);
 
-      // Sort the orders by creation date in descending order
-    orders.sort((a, b) => b.createdAt.getTime() - a.createdAt.getTime());
+    // Count the total number of orders in the database for pagination purposes
+    const total = await Order.countDocuments();
 
-    // Respond with the retrieved orders and a success message
-    res
-      .status(200)
-      .json({ message: "All orders retrieved successfully", orders });
+    // Respond with the retrieved orders, total count, current page, and total pages
+    res.status(200).json({
+      message: "All orders retrieved successfully",
+      orders,
+      total,
+      page,
+      pages: Math.ceil(total / limit), // Calculate the total number of pages based on the total count and limit
+    });
   } catch (error) {
+    // Respond with a server error message if an exception occurs
     res.status(500).json({ message: "Server error", error });
   }
 };
@@ -168,7 +219,7 @@ export const adminGetOrderById = async (
     const order = await Order.findById(req.params.id)
       .populate("items.productId")
       .populate("userId", "email");
-      // Check if the order exists and respond accordingly
+    // Check if the order exists and respond accordingly
     if (!order) {
       res.status(404).json({ message: "Order not found" });
       return;
@@ -207,7 +258,7 @@ export const adminGetOrdersByUserId = async (
     const orders = await Order.find({ userId: req.params.userId as any })
       .populate("items.productId")
       .populate("userId", "email");
-      // Check if any orders were found for the specified user and respond accordingly
+    // Check if any orders were found for the specified user and respond accordingly
     if (!orders || orders.length === 0) {
       res.status(404).json({ message: "No orders found for this user" });
       return;
@@ -229,7 +280,7 @@ export const adminGetOrdersByStatus = async (
     const orders = await Order.find({ status: status as any })
       .populate("items.productId")
       .populate("userId", "email");
-      // Check if any orders were found with the specified status and respond accordingly
+    // Check if any orders were found with the specified status and respond accordingly
     if (!orders || orders.length === 0) {
       res.status(404).json({ message: "No orders found with this status" });
       return;
@@ -279,4 +330,3 @@ export const adminGetOrdersByDateRange = async (
     });
   }
 };
-

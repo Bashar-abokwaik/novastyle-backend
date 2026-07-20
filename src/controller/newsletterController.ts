@@ -1,6 +1,6 @@
 import Newsletter from "../models/newsletter.js";
 import { validationResult } from "express-validator";
-import brevo from "../utils/brevo.js";
+import { sendEmail } from "../utils/sendEmail.js";
 import { Request, Response } from "express";
 import { console } from "inspector/promises";
 
@@ -34,23 +34,14 @@ export const subscribeNewsletter = async (
 
     // Send a welcome email
     try {
-      await brevo.transactionalEmails.sendTransacEmail({
-        to: [
-          {
-            email: email,
-          },
-        ],
-        sender: {
-          email: process.env.ADMIN_EMAIL!,
-          name: "NovaStyle",
-        },
+      await sendEmail({
+        to: email,
         subject: "Welcome to NovaStyle Newsletter",
-        htmlContent: "<p>Thank you for subscribing to our newsletter!</p>",
+        html: "<p>Thank you for subscribing to our newsletter!</p>",
       });
     } catch (emailError) {
       console.error("Error sending welcome email:", emailError);
     }
-
     // Respond with success message
     res
       .status(201)
@@ -124,18 +115,10 @@ export const sendNewsletter = async (
 
     // Send the newsletter to each subscriber
     for (const subscriber of subscribers) {
-      await brevo.transactionalEmails.sendTransacEmail({
-        to: [
-          {
-            email: subscriber.email,
-          },
-        ],
-        sender: {
-          email: process.env.ADMIN_EMAIL!,
-          name: "NovaStyle",
-        },
+      await sendEmail({
+        to: subscriber.email,
         subject,
-        htmlContent: `<p>${content}</p>`,
+        html: `<p>${content}</p>`,
       });
     }
 

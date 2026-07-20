@@ -1,6 +1,6 @@
 import express from "express";
 import * as userController from "../controller/userControllers.js";
-import { authMiddleware } from "../middleware/authMiddlewaer.js";
+import { authMiddleware } from "../middleware/authMiddleware.js";
 import { adminMiddleware } from "../middleware/adminMiddleware.js";
 import { body } from "express-validator";
 

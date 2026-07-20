@@ -1,6 +1,6 @@
 import express from "express";
 import * as cartController from "../controller/cartController.js";
-import { authMiddleware } from "../middleware/authMiddlewaer.js";
+import { authMiddleware } from "../middleware/authMiddleware.js";
 
 // Define the routes for the shopping cart
 const router = express.Router();

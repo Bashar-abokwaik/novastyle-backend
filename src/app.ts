@@ -2,7 +2,9 @@ import express from "express";
 import mongoose from "mongoose";
 import cors from "cors";
 import dotenv from "dotenv";
+import helmet from "helmet";
 
+import { apilimiter } from "./middleware/rateLimitMiddleware.js";
 // Import routes
 import authRoutes from "./routes/authRoutes.js";
 import productsRoutes from "./routes/productsRoutes.js";
@@ -12,6 +14,7 @@ import userRoutes from "./routes/userRoutes.js";
 import orderRoutes from "./routes/orderRoutes.js";
 import cartRoutes from "./routes/cartRoutes.js";
 import contactMessageRoutes from "./routes/contactMessageRoutes.js";
+import dashboardRoutes from "./routes/dashboardRoutes.js";
 
 // Load environment variables from .env file
 dotenv.config();
@@ -32,17 +35,22 @@ app.use(
   }),
 );
 
+// Use Helmet for security headers
+app.use(helmet());
+
 // Use the imported routes for handling requests to specific endpoints
 app.use("/api/auth", authRoutes);
-app.use("/api/products", productsRoutes);
-app.use("/api/categories", categoriesRoutes);
-app.use("/api/collections", collectionRoutes);
+app.use("/api/products", apilimiter, productsRoutes);
+app.use("/api/categories", apilimiter, categoriesRoutes);
+app.use("/api/collections", apilimiter, collectionRoutes);
 app.use("/api/user", userRoutes);
 app.use("/api/orders", orderRoutes);
 app.use("/api/cart", cartRoutes);
-app.use("/api/contact", contactMessageRoutes);
+app.use("/api/admin/dashboard", dashboardRoutes);
+app.use("/api/contact", apilimiter, contactMessageRoutes);
 app.use(
   "/api/newsletter",
+  apilimiter,
   (await import("./routes/newsletterRoutes.js")).default,
 );
 

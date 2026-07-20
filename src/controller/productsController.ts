@@ -4,9 +4,13 @@ import Collection from "../models/collection.js";
 import type { Request, Response } from "express";
 import { validationResult } from "express-validator";
 import Order from "../models/orders.js";
+import { getSortOption } from "../utils/sort.js";
 
 // Define a constant to specify the fields to exclude when retrieving public product data
-const PUBLIC_PRODUCT_FIELDS = "-costPrice -sku";
+const PUBLIC_PRODUCT_FIELDS = {
+  costPrice: 0,
+  sku: 0,
+};
 
 // Define an interface for the error response structure
 interface ErrorResponse {
@@ -47,6 +51,31 @@ export const getAllProductsAdmin = async (
       message: "Server error",
       error,
     });
+  }
+};
+
+// Controller function to retrieve a product by its ID for admin users
+export const getProductByIdAdmin = async (
+  req: Request,
+  res: Response,
+): Promise<void> => {
+  try {
+    // Extract the product ID from the request parameters and attempt to find the product in the database
+    const product = await Product.findById(req.params.id);
+
+    // If the product is not found, respond with a 404 error
+    if (!product) {
+      res.status(404).json({ message: "Product not found" });
+      return;
+    }
+
+    // Respond with a success message and the retrieved product data
+    res.status(200).json({
+      message: "Success",
+      product,
+    });
+  } catch (error) {
+    res.status(500).json({ message: "Server error", error });
   }
 };
 
@@ -188,7 +217,7 @@ export const updateProduct = async (
         stock,
         costPrice,
       },
-      { new: true },
+      { returnDocument: "after" }, // Return the updated document after the update operation
     );
     // If the product is not found, respond with a 404 error
     if (!updatedProduct) {
@@ -237,18 +266,76 @@ export const getAllProducts = async (
   try {
     // Implement pagination logic to retrieve products in a paginated manner
     const page = Number(req.query.page) || 1;
-    const limit = Number(req.query.limit) || 10;
+    const limit = Number(req.query.limit) || 12;
+
+    // Extract the sort parameter from the query string to determine the sorting order of the products
+    const sort = getSortOption(req.query.sort as string);
+
     const skip = (page - 1) * limit;
 
-    // Fetch products from the database, applying pagination, sorting by creation date in descending order, and excluding sensitive fields
-    const products = await Product.find()
-      .select(PUBLIC_PRODUCT_FIELDS)
-      .skip(skip)
-      .limit(limit)
-      .sort({ createdAt: -1 });
+    // Fetch products from the database that are in stock (stock > 0), applying pagination, sorting, and excluding sensitive fields
+    const products = await Product.aggregate([
+      // Match products that are in stock (stock > 0)
+      {
+        $match: {
+          stock: { $gt: 0 },
+        },
+      },
 
+      // Add a new field 'finalPrice' to each product document based on the discount and price
+      {
+        $addFields: {
+          finalPrice: {
+            $cond: [
+              { $gt: ["$discount", 0] },
+
+              // Calculate the final price after applying the discount
+              {
+                $multiply: [
+                  "$price",
+                  {
+                    $subtract: [
+                      1,
+                      {
+                        $divide: ["$discount", 100],
+                      },
+                    ],
+                  },
+                ],
+              },
+
+              "$price",
+            ],
+          },
+        },
+      },
+
+      // Sort the products based on the specified sort option (field and order)
+      {
+        $sort: {
+          [sort.field]: sort.order,
+        },
+      },
+
+      // Skip the specified number of products for pagination
+      {
+        $skip: skip,
+      },
+
+      // Limit the number of products returned for pagination
+      {
+        $limit: limit,
+      },
+
+      // Project only the public product fields to exclude sensitive information
+      {
+        $project: PUBLIC_PRODUCT_FIELDS,
+      },
+    ]);
     // Count the total number of products in the database to calculate the total number of pages
-    const total = await Product.countDocuments();
+    const total = await Product.countDocuments({
+      stock: { $gt: 0 },
+    });
 
     // Respond with the retrieved products, total count, current page, and total pages
     res.status(200).json({
@@ -271,8 +358,8 @@ export const getProductById = async (
   try {
     // Extract the product ID from the request parameters and attempt to find the product in the database
     const product = await Product.findById(req.params.id);
-    // If the product is not found, respond with a 404 error
-    if (!product) {
+    // If the product is not found or out of stock, respond with a 404 error
+    if (!product || product.stock === 0) {
       res.status(404).json({ message: "Product not found" } as ErrorResponse);
       return;
     }
@@ -294,16 +381,73 @@ export const getOfferedProducts = async (
   try {
     // Implement pagination logic to retrieve products in a paginated manner
     const page = Number(req.query.page) || 1;
-    const limit = Number(req.query.limit) || 10;
+    const limit = Number(req.query.limit) || 12;
     const skip = (page - 1) * limit;
-    const products = await Product.find({ discount: { $gt: 0 } })
-      .select(PUBLIC_PRODUCT_FIELDS)
-      .skip(skip)
-      .limit(limit)
-      .sort({ createdAt: -1 });
+
+    // Extract the sort parameter from the query string to determine the sorting order of the products
+    const sort = getSortOption(req.query.sort as string);
+
+    // Fetch products from the database that have a discount greater than 0 and are in stock (stock > 0), applying pagination, sorting, and excluding sensitive fields
+    const products = await Product.aggregate([
+      // Match products that have a discount greater than 0 and are in stock (stock > 0)
+      {
+        $match: {
+          discount: { $gt: 0 },
+          stock: { $gt: 0 },
+        },
+      },
+
+      // Add a new field 'finalPrice' to each product document based on the discount and price
+      {
+        $addFields: {
+          finalPrice: {
+            $cond: [
+              { $gt: ["$discount", 0] },
+              // Calculate the final price after applying the discount
+              {
+                $multiply: [
+                  "$price",
+                  {
+                    $subtract: [
+                      1,
+                      {
+                        $divide: ["$discount", 100],
+                      },
+                    ],
+                  },
+                ],
+              },
+              "$price",
+            ],
+          },
+        },
+      },
+      // Sort the products based on the specified sort option (field and order)
+      {
+        $sort: {
+          [sort.field]: sort.order,
+        },
+      },
+      // Skip the specified number of products for pagination
+      {
+        $skip: skip,
+      },
+      // Limit the number of products returned for pagination
+      {
+        $limit: limit,
+      },
+      // Project only the public product fields to exclude sensitive information
+      {
+        $project: PUBLIC_PRODUCT_FIELDS,
+      },
+    ]);
 
     // Count the total number of products with a discount in the database to calculate the total number of pages
-    const total = await Product.countDocuments({ discount: { $gt: 0 } });
+    // Only count products that are in stock (stock > 0)
+    const total = await Product.countDocuments({
+      discount: { $gt: 0 },
+      stock: { $gt: 0 },
+    });
 
     // Respond with the retrieved products, total count, current page, and total pages
     res.status(200).json({
@@ -326,15 +470,21 @@ export const getNewArrivals = async (
   try {
     // Implement pagination logic to retrieve products in a paginated manner
     const page = Number(req.query.page) || 1;
-    const limit = Number(req.query.limit) || 10;
+    const limit = Number(req.query.limit) || 8;
     const skip = (page - 1) * limit;
-    const products = await Product.find({ isNewArrival: true })
+    const products = await Product.find({
+      isNewArrival: true,
+      stock: { $gt: 0 },
+    })
       .select(PUBLIC_PRODUCT_FIELDS)
       .skip(skip)
       .limit(limit)
       .sort({ createdAt: -1 });
-      // Count the total number of new arrival products in the database to calculate the total number of pages
-    const total = await Product.countDocuments({ isNewArrival: true });
+    // Count the total number of new arrival products in the database to calculate the total number of pages
+    const total = await Product.countDocuments({
+      isNewArrival: true,
+      stock: { $gt: 0 },
+    });
     // Respond with the retrieved products, total count, current page, and total pages
     res.status(200).json({
       message: "Success",
@@ -356,18 +506,21 @@ export const getFeaturedProducts = async (
   try {
     // Implement pagination logic to retrieve products in a paginated manner
     const page = Number(req.query.page) || 1;
-    const limit = Number(req.query.limit) || 10;
+    const limit = Number(req.query.limit) || 8;
     const skip = (page - 1) * limit;
 
     // Fetch featured products from the database, applying pagination, sorting by creation date in descending order, and excluding sensitive fields
-    const products = await Product.find({ isFeatured: true })
+    const products = await Product.find({ isFeatured: true, stock: { $gt: 0 } })
       .select(PUBLIC_PRODUCT_FIELDS)
       .skip(skip)
       .limit(limit)
       .sort({ createdAt: -1 });
 
-      // Count the total number of featured products in the database to calculate the total number of pages
-    const total = await Product.countDocuments({ isFeatured: true });
+    // Count the total number of featured products in the database to calculate the total number of pages
+    const total = await Product.countDocuments({
+      isFeatured: true,
+      stock: { $gt: 0 },
+    });
 
     // Respond with the retrieved products, total count, current page, and total pages
     res.status(200).json({
@@ -404,18 +557,164 @@ export const getProductsByCategory = async (
     }
     // Implement pagination logic to retrieve products in a paginated manner
     const page = Number(req.query.page) || 1;
-    const limit = Number(req.query.limit) || 10;
+    const limit = Number(req.query.limit) || 12;
     const skip = (page - 1) * limit;
 
-    // Fetch products from the database that belong to the specified category, applying pagination, sorting by creation date in descending order, and excluding sensitive fields
-    const products = await Product.find({ categoryId: category._id })
-      .select(PUBLIC_PRODUCT_FIELDS)
-      .skip(skip)
-      .limit(limit)
-      .sort({ createdAt: -1 });
+    // Extract the sort parameter from the query string to determine the sorting order of the products
+    const sort = getSortOption(req.query.sort as string);
 
-      // Count the total number of products in the specified category to calculate the total number of pages
-    const total = await Product.countDocuments({ categoryId: category._id });
+    // Fetch products from the database that belong to the specified category, are in stock (stock > 0), applying pagination, sorting, and excluding sensitive fields
+    const products = await Product.aggregate([
+      {
+        $match: {
+          categoryId: category._id,
+          stock: { $gt: 0 },
+        },
+      },
+
+      {
+        $addFields: {
+          finalPrice: {
+            $cond: [
+              { $gt: ["$discount", 0] },
+              {
+                $multiply: [
+                  "$price",
+                  {
+                    $subtract: [
+                      1,
+                      {
+                        $divide: ["$discount", 100],
+                      },
+                    ],
+                  },
+                ],
+              },
+              "$price",
+            ],
+          },
+        },
+      },
+
+      {
+        $sort: {
+          [sort.field]: sort.order,
+        },
+      },
+
+      {
+        $skip: skip,
+      },
+
+      {
+        $limit: limit,
+      },
+
+      {
+        $project: PUBLIC_PRODUCT_FIELDS,
+      },
+    ]);
+
+    // Count the total number of products in the specified category that are in stock to calculate the total number of pages
+    const total = await Product.countDocuments({
+      categoryId: category._id,
+      stock: { $gt: 0 },
+    });
+
+    // Respond with the retrieved products, total count, current page, and total pages
+    res.status(200).json({
+      message: "Success",
+      products,
+      total,
+      page,
+      pages: Math.ceil(total / limit),
+    });
+  } catch (error) {
+    res.status(500).json({ message: "Server error", error } as ErrorResponse);
+  }
+};
+
+export const getProductsByCategoryOffers = async (
+  req: Request,
+  res: Response,
+): Promise<void> => {
+  try {
+    // Extract the category slug from the request parameters and validate its presence
+    const slug = req.params.slug;
+    if (!slug) {
+      res
+        .status(400)
+        .json({ message: "Category slug is required" } as ErrorResponse);
+      return;
+    }
+    // Find the category in the database using the provided slug
+    const category = await Category.findOne({ slug });
+    if (!category) {
+      res.status(404).json({ message: "Category not found" } as ErrorResponse);
+      return;
+    }
+    // Implement pagination logic to retrieve products in a paginated manner
+    const page = Number(req.query.page) || 1;
+    const limit = Number(req.query.limit) || 12;
+    const skip = (page - 1) * limit;
+
+    // Extract the sort parameter from the query string to determine the sorting order of the products
+    const sort = getSortOption(req.query.sort as string);
+
+    // Fetch products from the database that belong to the specified category, have a discount greater than 0, are in stock (stock > 0), applying pagination, sorting, and excluding sensitive fields
+    const products = await Product.aggregate([
+      {
+        $match: {
+          categoryId: category._id,
+          discount: { $gt: 0 },
+          stock: { $gt: 0 },
+        },
+      },
+      {
+        $addFields: {
+          finalPrice: {
+            $cond: [
+              { $gt: ["$discount", 0] },
+              {
+                $multiply: [
+                  "$price",
+                  {
+                    $subtract: [
+                      1,
+                      {
+                        $divide: ["$discount", 100],
+                      },
+                    ],
+                  },
+                ],
+              },
+              "$price",
+            ],
+          },
+        },
+      },
+      {
+        $sort: {
+          [sort.field]: sort.order,
+        },
+      },
+      {
+        $skip: skip,
+      },
+      {
+        $limit: limit,
+      },
+      {
+        $project: PUBLIC_PRODUCT_FIELDS,
+      },
+    ]);
+
+    // Count the total number of products in the specified category that have a discount and are in stock to calculate the total number of pages
+    const total = await Product.countDocuments({
+      categoryId: category._id,
+      discount: { $gt: 0 },
+      stock: { $gt: 0 },
+    });
 
     // Respond with the retrieved products, total count, current page, and total pages
     res.status(200).json({
@@ -454,19 +753,23 @@ export const getProductsByCollection = async (
     }
     // Implement pagination logic to retrieve products in a paginated manner
     const page = Number(req.query.page) || 1;
-    const limit = Number(req.query.limit) || 10;
+    const limit = Number(req.query.limit) || 12;
     const skip = (page - 1) * limit;
 
     // Fetch products from the database that belong to the specified collection, applying pagination, sorting by creation date in descending order, and excluding sensitive fields
-    const products = await Product.find({ collectionId: collection._id })
+    const products = await Product.find({
+      collectionId: collection._id,
+      stock: { $gt: 0 },
+    })
       .select(PUBLIC_PRODUCT_FIELDS)
       .skip(skip)
       .limit(limit)
       .sort({ createdAt: -1 });
 
-      // Count the total number of products in the specified collection to calculate the total number of pages
+    // Count the total number of products in the specified collection that are in stock to calculate the total number of pages
     const total = await Product.countDocuments({
       collectionId: collection._id,
+      stock: { $gt: 0 },
     });
 
     // Respond with the retrieved products, total count, current page, and total pages

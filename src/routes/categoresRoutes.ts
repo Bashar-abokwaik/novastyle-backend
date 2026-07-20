@@ -1,7 +1,7 @@
 import express from "express";
 import * as categoriesController from "../controller/categoresController.js";
 import { adminMiddleware } from "../middleware/adminMiddleware.js";
-import { authMiddleware } from "../middleware/authMiddlewaer.js";
+import { authMiddleware } from "../middleware/authMiddleware.js";
 import { body } from "express-validator";
 
 // Define the routes for category management

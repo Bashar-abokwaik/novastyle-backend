@@ -4,16 +4,36 @@ import Order from "../models/orders.js";
 import { Request, Response } from "express";
 import { generateOTP } from "../utils/otp.js";
 import { validationResult } from "express-validator";
-import brevo from "../utils/brevo.js";
+import { sendEmail } from "../utils/sendEmail.js";
 
 // Get all users
 export const getUsers = async (req: Request, res: Response): Promise<void> => {
   try {
-    // Retrieve all users from the database, excluding their passwords for security reasons
-    const users = await User.find().select("-password");
-    // Respond with a success message and the retrieved users
-    res.status(200).json({ message: "Users retrieved successfully", users });
+    // Implement pagination for retrieving users
+    const page = Number(req.query.page) || 1;
+    const limit = Number(req.query.limit) || 20;
+    const skip = (page - 1) * limit;
+
+    // Retrieve users from the database, excluding the password field for security reasons, and apply pagination
+    const users = await User.find()
+      .select("-password")
+      .skip(skip)
+      .limit(limit)
+      .sort({ createdAt: -1 });
+
+    // Count the total number of users in the database for pagination purposes
+    const total = await User.countDocuments();
+
+    // Respond with a success message, the retrieved users, and pagination information
+    res.status(200).json({
+      message: "Users retrieved successfully",
+      users,
+      total,
+      page,
+      pages: Math.ceil(total / limit),
+    });
   } catch (error) {
+    // Respond with a server error message if an exception occurs
     res.status(500).json({ message: "Server error", error });
   }
 };
@@ -93,18 +113,10 @@ export const updateUserProfile = async (
       await user.save();
 
       // Send OTP email for verification using Brevo
-      await brevo.transactionalEmails.sendTransacEmail({
-        to: [
-          {
-            email: email,
-          },
-        ],
-        sender: {
-          email: process.env.ADMIN_EMAIL!,
-          name: "NovaStyle",
-        },
+      await sendEmail({
+        to: email,
         subject: "Verify your new email",
-        htmlContent: `
+        html: `
           <h2>Email Verification</h2>
           <p>Your OTP for email verification is:</p>
           <h1>${user.otp}</h1>
@@ -149,18 +161,39 @@ export const getUserOrders = async (
   try {
     // Retrieve the authenticated user's ID from the request object
     const userId = req.user?.userId;
+
     // If the user ID is not found, respond with a 401 status and an error message
     if (!userId) {
       res.status(401).json({ message: "Unauthorized" });
       return;
     }
-    // Retrieve the user's orders from the database, populating the product details and user email, and sorting them by creation date in descending order
+
+    // Implement pagination for retrieving user orders
+    const page = Number(req.query.page) || 1;
+    const limit = Number(req.query.limit) || 10;
+    const skip = (page - 1) * limit;
+
+    // Retrieve the user's orders from the database, populating the product and user details, and apply pagination
     const orders = await Order.find({ userId })
       .populate("items.productId")
       .populate("userId", "email")
-      .sort({ createdAt: -1 });
-    res.status(200).json({ message: "User orders retrieved", orders });
+      .sort({ createdAt: -1 })
+      .skip(skip)
+      .limit(limit);
+
+      // Count the total number of orders for the user in the database for pagination purposes
+    const total = await Order.countDocuments({ userId });
+
+    // Respond with a success message, the retrieved orders, and pagination information
+    res.status(200).json({
+      message: "User orders retrieved",
+      orders,
+      total,
+      page,
+      pages: Math.ceil(total / limit),
+    });
   } catch (error) {
+    // Respond with a server error message if an exception occurs
     res.status(500).json({ message: "Server error", error });
   }
 };
@@ -182,7 +215,7 @@ export const getUserCart = async (
     const cart = await Cart.findOne({ userId })
       .populate("items.productId")
       .sort({ createdAt: -1 });
-      // If the cart is not found, respond with a 404 status and an error message
+    // If the cart is not found, respond with a 404 status and an error message
     if (!cart) {
       res.status(404).json({ message: "Cart not found" });
       return;

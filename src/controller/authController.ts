@@ -3,7 +3,7 @@ import bcrypt from "bcrypt";
 import { validationResult } from "express-validator";
 import jwt from "jsonwebtoken";
 import { Request, Response } from "express";
-import brevo from "../utils/brevo.js";
+import { sendEmail } from "../utils/sendEmail.js";
 import { generateOTP } from "../utils/otp.js";
 import crypto from "crypto";
 
@@ -80,22 +80,20 @@ export const register = async (
       otp,
       otpExpires,
       isVerified: false,
+      address: {
+        country: "",
+        city: "",
+        street: "",
+        postalCode: "",
+      },
     });
 
     // Send OTP email
     try {
-      await brevo.transactionalEmails.sendTransacEmail({
-        to: [
-          {
-            email: email,
-          },
-        ],
-        sender: {
-          name: "NovaStyle",
-          email: process.env.ADMIN_EMAIL!,
-        },
+      await sendEmail({
+        to: email,
         subject: "Verify your email",
-        htmlContent: `
+        html: `
       <h2>Email Verification</h2>
       <p>Your OTP for email verification is:</p>
       <h1>${otp}</h1>
@@ -209,18 +207,10 @@ export const resendOTP = async (
 
     // Send OTP email
     try {
-      await brevo.transactionalEmails.sendTransacEmail({
-        to: [
-          {
-            email: email,
-          },
-        ],
-        sender: {
-          email: process.env.ADMIN_EMAIL!,
-          name: "NovaStyle",
-        },
+      await sendEmail({
+        to: email,
         subject: "Verify your email",
-        htmlContent: `
+        html: `
     <h2>Email Verification</h2>
     <p>Your OTP for email verification is:</p>
     <h1>${otp}</h1>
@@ -277,18 +267,10 @@ export const login = async (
 
       // Send OTP email
       try {
-        await brevo.transactionalEmails.sendTransacEmail({
-          to: [
-            {
-              email: email,
-            },
-          ],
-          sender: {
-            email: process.env.ADMIN_EMAIL!,
-            name: "NovaStyle",
-          },
+        await sendEmail({
+          to: email,
           subject: "Verify your email",
-          htmlContent: `
+          html: `
       <h2>Email Verification</h2>
       <p>Your OTP for email verification is:</p>
       <h1>${otp}</h1>
@@ -376,18 +358,10 @@ export const forgetPassword = async (
     await user.save();
 
     // Send reset password email
-    await brevo.transactionalEmails.sendTransacEmail({
-      to: [
-        {
-          email: user.email,
-        },
-      ],
-      sender: {
-        email: process.env.ADMIN_EMAIL!,
-        name: "NovaStyle",
-      },
+    await sendEmail({
+      to: user.email,
       subject: "Reset Password",
-      htmlContent: `
+      html: `
         <p>Click the link below to reset your password:</p>
         <a href="${process.env.FRONTEND_URL}/reset-password/${resetToken}">
           Reset Password
@@ -485,13 +459,21 @@ export const changePassword = async (
       res.status(400).json({ message: "Passwords do not match" });
       return;
     }
+    if (await bcrypt.compare(newPassword, user.password)) {
+      res.status(400).json({
+        message: "New password cannot be the same as old password",
+      });
+      return;
+    }
     // Hash new password and save user
     user.password = await bcrypt.hash(newPassword, 12);
+    // Update passwordChangedAt field to current date
+    user.passwordChangedAt = new Date();
     await user.save();
     // Return success response
     res.status(200).json({ message: "Password changed successfully" });
   } catch (error) {
     // Return error response
-    res.status(500).json({ message: "Server error", error });
+    res.status(500).json({ message: "Server error" });
   }
 };

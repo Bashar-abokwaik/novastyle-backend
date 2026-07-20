@@ -18,6 +18,9 @@ const userSchema = new mongoose.Schema(
       street: String,
       postalCode: String,
     },
+    passwordChangedAt: {
+      type: Date,
+    },
   },
   { timestamps: true },
 );

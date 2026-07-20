@@ -1,4 +1,5 @@
 import Cart from "../models/cart.js";
+import Product from "../models/products.js";
 import { Request, Response } from "express";
 import mongoose from "mongoose";
 
@@ -51,6 +52,23 @@ export const addToCart = async (req: Request, res: Response): Promise<void> => {
         userId: new mongoose.Types.ObjectId(req.user?.userId),
         items: [],
       });
+    }
+
+    // Find the product by its ID to check if it exists and has stock
+    const product = await Product.findById(productId);
+    if (!product) {
+      res.status(404).json({
+        message: "Product not found",
+      });
+      return;
+    }
+
+    // Check if the product is out of stock
+    if (product.stock === 0) {
+      res.status(400).json({
+        message: "Product is out of stock",
+      });
+      return;
     }
 
     // Check if the product already exists in the cart

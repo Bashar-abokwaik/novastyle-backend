@@ -28,7 +28,11 @@ export const createCollection = async (
     // Check if a collection with the same slug already exists in the database
     const existingCollection = await Collection.findOne({ slug });
     if (existingCollection) {
-      res.status(400).json({ message: "Collection with this slug already exists" } as ErrorResponse);
+      res
+        .status(400)
+        .json({
+          message: "Collection with this slug already exists",
+        } as ErrorResponse);
       return;
     }
     // Create a new collection instance and save it to the database
@@ -100,8 +104,15 @@ export const updateCollection = async (
 
     // Check if a collection with the same slug already exists in the database
     const existingCollection = await Collection.findOne({ slug });
-    if (existingCollection && existingCollection._id.toString() !== req.params.id) {
-      res.status(400).json({ message: "Collection with this slug already exists" } as ErrorResponse);
+    if (
+      existingCollection &&
+      existingCollection._id.toString() !== req.params.id
+    ) {
+      res
+        .status(400)
+        .json({
+          message: "Collection with this slug already exists",
+        } as ErrorResponse);
       return;
     }
 
@@ -109,7 +120,7 @@ export const updateCollection = async (
     const updatedCollection = await Collection.findByIdAndUpdate(
       req.params.id,
       { name, slug, imageUrl },
-      { new: true },
+      { returnDocument: "after" }, // Return the updated document after the update operation
     );
     if (!updatedCollection) {
       res
@@ -137,7 +148,9 @@ export const deleteCollection = async (
     const collection = await Collection.findById(collectionId);
 
     if (!collection) {
-      res.status(404).json({ message: "Collection not found" } as ErrorResponse);
+      res
+        .status(404)
+        .json({ message: "Collection not found" } as ErrorResponse);
       return;
     }
 

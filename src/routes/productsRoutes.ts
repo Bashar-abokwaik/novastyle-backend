@@ -1,7 +1,7 @@
 import express from "express";
 import * as productsController from "../controller/productsController.js";
 import { adminMiddleware } from "../middleware/adminMiddleware.js";
-import { authMiddleware } from "../middleware/authMiddlewaer.js";
+import { authMiddleware } from "../middleware/authMiddleware.js";
 import { body } from "express-validator";
 
 // Define the product routes using Express Router
@@ -13,6 +13,14 @@ router.get(
   authMiddleware,
   adminMiddleware,
   productsController.getAllProductsAdmin,
+);
+
+// Admin route to get a product by ID, protected by authentication and admin middleware
+router.get(
+  "/admin/:id",
+  authMiddleware,
+  adminMiddleware,
+  productsController.getProductByIdAdmin,
 );
 
 // Create a new product, protected by authentication and admin middleware, with validation for required fields
@@ -63,6 +71,9 @@ router.get("/offers", productsController.getOfferedProducts);
 
 // Public route to get products by category slug
 router.get("/category/:slug", productsController.getProductsByCategory);
+
+// Public route to get products by collection slug
+router.get("/category/:slug/offers", productsController.getProductsByCategoryOffers);
 
 // Public route to get products by collection slug
 router.get("/collection/:slug", productsController.getProductsByCollection);

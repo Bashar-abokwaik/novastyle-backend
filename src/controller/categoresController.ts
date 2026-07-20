@@ -130,7 +130,7 @@ export const updateCategory = async (
     const updatedCategory = await Category.findByIdAndUpdate(
       req.params.id,
       { name, slug, imageUrl },
-      { new: true },
+      { returnDocument: "after" }, // Return the updated document after the update operation
     );
     // If the category is not found, respond with a 404 error
     if (!updatedCategory) {
