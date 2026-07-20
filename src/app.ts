@@ -28,7 +28,7 @@ app.use(express.json());
 // Enable CORS for specified origins and methods
 app.use(
   cors({
-    origin: ["http://localhost:5173", "http://localhost:3000", ...(process.env.FRONTEND_URL ? [process.env.FRONTEND_URL] : [])],
+    origin: ["http://localhost:5173", "http://localhost:3000", "https://novastyle-store.web.app",],
     credentials: true,
     methods: ["GET", "POST", "PUT", "DELETE"],
     allowedHeaders: ["Content-Type", "Authorization"],
