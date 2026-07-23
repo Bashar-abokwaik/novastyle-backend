@@ -41,14 +41,6 @@ app.use(helmet());
 // Set the trust proxy setting to 1, which is useful when the app is behind a reverse proxy (like Nginx or Heroku)
 app.set("trust proxy", 1);
 
-app.get("/debug-ip", (req, res) => {
-  res.json({
-    ip: req.ip,
-    ips: req.ips,
-    forwarded: req.headers["x-forwarded-for"],
-  });
-});
-
 // Use the imported routes for handling requests to specific endpoints
 app.use("/api/auth", authRoutes);
 app.use("/api/products", apilimiter, productsRoutes);
