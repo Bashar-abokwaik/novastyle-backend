@@ -2,7 +2,7 @@ import express from "express";
 import * as authController from "../controller/authController.js";
 import { body } from "express-validator";
 import { authMiddleware } from "../middleware/authMiddleware.js";
-import { authLimiter, verifyOtpLimiter, otpLimiter } from "../middleware/rateLimitMiddleware.js";
+import { authLimiter, loginLimiter, verifyOtpLimiter, otpLimiter } from "../middleware/rateLimitMiddleware.js";
 
 // Define the routes for authentication
 const router = express.Router();
@@ -47,7 +47,7 @@ router.post(
 // Route for user login
 router.post(
   "/login",
-  authLimiter,
+  loginLimiter,
   body("email").isEmail().normalizeEmail().withMessage("Invalid email"),
   body("password").notEmpty().withMessage("Password is required"),
   authController.login

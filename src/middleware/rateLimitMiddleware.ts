@@ -18,6 +18,19 @@ export const authLimiter = rateLimit({
   message: "Too many requests from this IP, please try again after 15 minutes",
 });
 
+// Rate limiting middleware for login routes
+export const loginLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  max: 5,
+
+  keyGenerator: (req) => {
+    return `${req.ip}:${req.body.email}`;
+  },
+
+  message: "Too many login attempts. Please try again later.",
+});
+
+
 // Rate limiting middleware for OTP verification routes
 export const verifyOtpLimiter = rateLimit({
   windowMs: 10 * 60 * 1000, // 10 minutes
